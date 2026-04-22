@@ -6,6 +6,9 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "vm.h"
+#include "syscall.h"
+
+extern uint64 syscall_cnt[];
 
 uint64
 sys_exit(void)
@@ -93,6 +96,16 @@ sys_kill(void)
 
   argint(0, &pid);
   return kkill(pid);
+}
+
+uint64
+sys_getcnt(void)
+{
+  int num;
+  argint(0, &num);
+  if(num <= 0 || num >= NSCALL)
+    return -1;
+  return syscall_cnt[num];
 }
 
 // return how many clock tick interrupts have occurred
