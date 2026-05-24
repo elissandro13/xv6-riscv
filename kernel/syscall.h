@@ -21,4 +21,6 @@
 #define SYS_mkdir  20
 #define SYS_close  21
 #define SYS_getcnt 22
-#define NSCALL     23
+#define SYS_settickets 23
+#define SYS_getpinfo   24
+#define NSCALL     25

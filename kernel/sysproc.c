@@ -7,8 +7,10 @@
 #include "proc.h"
 #include "vm.h"
 #include "syscall.h"
+#include "pstat.h"
 
 extern uint64 syscall_cnt[];
+extern struct proc proc[NPROC];
 
 uint64
 sys_exit(void)
@@ -106,6 +108,53 @@ sys_getcnt(void)
   if(num <= 0 || num >= NSCALL)
     return -1;
   return syscall_cnt[num];
+}
+
+// settickets(int n): set the calling process's lottery-ticket count.
+// Returns 0 on success, -1 if n is not strictly positive.
+uint64
+sys_settickets(void)
+{
+  int n;
+  struct proc *p = myproc();
+
+  argint(0, &n);
+  if(n < 1)
+    return -1;
+
+  acquire(&p->lock);
+  p->tickets = n;
+  release(&p->lock);
+  return 0;
+}
+
+// getpinfo(struct pstat *ps): copy a snapshot of the proc table into *ps.
+// Returns 0 on success, -1 if the user pointer is null or copyout fails.
+uint64
+sys_getpinfo(void)
+{
+  uint64 addr;
+  struct pstat ps;
+  struct proc *p = myproc();
+  struct proc *q;
+  int i;
+
+  argaddr(0, &addr);
+  if(addr == 0)
+    return -1;
+
+  for(i = 0, q = proc; q < &proc[NPROC]; q++, i++) {
+    acquire(&q->lock);
+    ps.inuse[i]   = (q->state != UNUSED);
+    ps.tickets[i] = q->tickets;
+    ps.pid[i]     = q->pid;
+    ps.ticks[i]   = q->ticks;
+    release(&q->lock);
+  }
+
+  if(copyout(p->pagetable, addr, (char *)&ps, sizeof(ps)) < 0)
+    return -1;
+  return 0;
 }
 
 // return how many clock tick interrupts have occurred

@@ -104,4 +104,10 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // Lottery scheduler fields (p->lock must be held when reading/writing):
+  int tickets;                 // Number of lottery tickets owned by this process
+  int ticks;                   // Timer ticks consumed while RUNNING (for pstat)
 };
+
+#define DEFAULT_TICKETS 1      // Tickets assigned to a newly allocated process

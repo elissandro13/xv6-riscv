@@ -124,6 +124,8 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+  p->tickets = DEFAULT_TICKETS;
+  p->ticks = 0;
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -169,6 +171,8 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+  p->tickets = 0;
+  p->ticks = 0;
 }
 
 // Create a user page table for a given process, with no user memory,
@@ -289,6 +293,10 @@ kfork(void)
   np->cwd = idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
+
+  // Inherit lottery tickets from parent.
+  np->tickets = p->tickets;
+  np->ticks = 0;
 
   pid = np->pid;
 
@@ -437,24 +445,50 @@ scheduler(void)
     intr_on();
     intr_off();
 
-    int found = 0;
+    // ---- Lottery scheduler ----
+    // First pass: compute total tickets across RUNNABLE processes.
+    // Sleeping/zombie/running processes are not competing for the CPU
+    // and are excluded from the draw.
+    int total_tickets = 0;
     for(p = proc; p < &proc[NPROC]; p++) {
       acquire(&p->lock);
-      if(p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release its lock and then reacquire it
-        // before jumping back to us.
-        p->state = RUNNING;
-        c->proc = p;
-        swtch(&c->context, &p->context);
-
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        c->proc = 0;
-        found = 1;
-      }
+      if(p->state == RUNNABLE)
+        total_tickets += p->tickets;
       release(&p->lock);
     }
+
+    int found = 0;
+    if(total_tickets > 0) {
+      // Draw a winning ticket in [1, total_tickets].
+      int winner = rand_int(total_tickets);
+      int counter = 0;
+
+      // Second pass: walk the proc table accumulating tickets until
+      // we cross the winning ticket — that process wins this round.
+      for(p = proc; p < &proc[NPROC]; p++) {
+        acquire(&p->lock);
+        if(p->state == RUNNABLE) {
+          counter += p->tickets;
+          if(counter >= winner) {
+            // Switch to chosen process.  It is the process's job
+            // to release its lock and then reacquire it
+            // before jumping back to us.
+            p->state = RUNNING;
+            c->proc = p;
+            swtch(&c->context, &p->context);
+
+            // Process is done running for now.
+            // It should have changed its p->state before coming back.
+            c->proc = 0;
+            found = 1;
+            release(&p->lock);
+            break;
+          }
+        }
+        release(&p->lock);
+      }
+    }
+
     if(found == 0) {
       // nothing to run; stop running on this core until an interrupt.
       asm volatile("wfi");
@@ -495,6 +529,8 @@ yield(void)
 {
   struct proc *p = myproc();
   acquire(&p->lock);
+  // The current process consumed a timer-interrupt quantum before yielding.
+  p->ticks++;
   p->state = RUNNABLE;
   sched();
   release(&p->lock);

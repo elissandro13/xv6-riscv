@@ -13,6 +13,7 @@ OBJS = \
   $K/main.o \
   $K/vm.o \
   $K/proc.o \
+  $K/rand.o \
   $K/swtch.o \
   $K/trampoline.o \
   $K/trap.o \
@@ -147,6 +148,8 @@ UPROGS=\
 	$U/_dorphan\
 	$U/_testcnt\
 	$U/_getcnt\
+	$U/_schedtest\
+	$U/_schedgraph\
 
 fs.img: mkfs/mkfs README $(UPROGS)
 	mkfs/mkfs fs.img README $(UPROGS)
